@@ -1,7 +1,7 @@
 #ifndef TMC2209_REGISTER_H
 #define TMC2209_REGISTER_H
 
-#include "tmc2209/driver.dto.h"
+#include "driver.dto.h"
 
 // Register addresses
 #define REG_GCONF 0x00

@@ -6,5 +6,10 @@ cmake_minimum_required(VERSION 3.16)
 
 set(EXTRA_COMPONENT_DIRS "components/tmc2209")
 
-include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(TMC2209_ESP-IDF)
+
+include($ENV{IDF_PATH}/tools/cmake/project.cmake)
+
+set(app_sources
+    main/main.c
+)

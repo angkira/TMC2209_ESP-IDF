@@ -1,0 +1,8 @@
+version: 0.1.0
+name: tmc2209
+description: TMC2209 stepper motor driver for ESP-IDF
+type: library
+frameworks:
+  - esp-idf
+url: https://github.com/angkira/TMC2209_ESP-IDF
+license: MIT
