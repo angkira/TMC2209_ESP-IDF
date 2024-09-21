@@ -4,7 +4,8 @@
   "idf.customExtraPaths": "/Users/urijmedvedev/esp/.espressif/tools/xtensa-esp-elf-gdb/14.2_20240403/xtensa-esp-elf-gdb/bin:/Users/urijmedvedev/esp/.espressif/tools/riscv32-esp-elf-gdb/14.2_20240403/riscv32-esp-elf-gdb/bin:/Users/urijmedvedev/esp/.espressif/tools/xtensa-esp-elf/esp-13.2.0_20240530/xtensa-esp-elf/bin:/Users/urijmedvedev/esp/.espressif/tools/riscv32-esp-elf/esp-13.2.0_20240530/riscv32-esp-elf/bin:/Users/urijmedvedev/esp/.espressif/tools/esp32ulp-elf/2.38_20240113/esp32ulp-elf/bin:/Users/urijmedvedev/esp/.espressif/tools/cmake/3.24.0/CMake.app/Contents/bin:/Users/urijmedvedev/esp/.espressif/tools/openocd-esp32/v0.12.0-esp32-20240318/openocd-esp32/bin:/Users/urijmedvedev/esp/.espressif/tools/ninja/1.11.1:/Users/urijmedvedev/esp/.espressif/tools/esp-rom-elfs/20240305",
   "idf.customExtraVars": {
     "OPENOCD_SCRIPTS": "/Users/urijmedvedev/esp/.espressif/tools/openocd-esp32/v0.12.0-esp32-20240318/openocd-esp32/share/openocd/scripts",
-    "ESP_ROM_ELF_DIR": "/Users/urijmedvedev/esp/.espressif/tools/esp-rom-elfs/20240305/"
+    "ESP_ROM_ELF_DIR": "/Users/urijmedvedev/esp/.espressif/tools/esp-rom-elfs/20240305/",
+    "IDF_PATH": "/Users/urijmedvedev/esp/v5.3/esp-idf",
   },
   "idf.espIdfPath": "/Users/urijmedvedev/esp/v5.3/esp-idf",
   "idf.espAdfPath": "/Users/urijmedvedev/esp/.espressif/esp-adf",
@@ -17,6 +18,8 @@
   "idf.gitPath": "/opt/homebrew/bin/git",
   "idf.flashType": "UART",
   "files.associations": {
-    "esp_log.h": "c"
+    "esp_log.h": "c",
+    "tmc2209.h": "c",
+    "string.h": "c"
   }
 }

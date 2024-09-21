@@ -18,7 +18,7 @@ void app_main()
   motorDriver.settings.microsteps = 64;
   motorDriver.settings.stealthchop_enabled = true;
   // Setup the driver
-  esp_err_t err = tmc2209_setup(&motorDriver);
+  esp_err_t err = setup_driver(&motorDriver);
   if (err != ESP_OK)
   {
     ESP_LOGE(TAG, "Error setting up TMC2209 driver: %s", esp_err_to_name(err));
@@ -26,20 +26,20 @@ void app_main()
   }
 
   // // Enable the driver
-  tmc2209_enable(&motorDriver);
+  enable_driver(&motorDriver);
   ESP_LOGI(TAG, "TMC2209 driver enabled");
 
   // Basic motor control sequence
   ESP_LOGI(TAG, "Starting motor movement...");
-  // tmc2209_moveAtVelocity(&motorDriver, 10000);
+  // moveAtVelocity(&motorDriver, 10000);
 
-  tmc2209_rotate(&motorDriver, 20000, 100000);
+  rotate_motor(&motorDriver, 20000, 100000);
 
   // vTaskDelay(20000 / portTICK_PERIOD_MS);
 
-  // tmc2209_moveAtVelocity(&motorDriver, 0);
+  // moveAtVelocity(&motorDriver, 0);
 
   // Disable the driver when finished
-  tmc2209_disable(&motorDriver);
+  disable_driver(&motorDriver);
   ESP_LOGI(TAG, "TMC2209 driver disabled");
 }

@@ -1,40 +1,19 @@
 #include "tmc2209.h"
-#include "string.h"
-#include "esp_log.h"
+#include "setup.h"
+#include "register.h"
+#include "driver.dto.h"
 
 #include "driver/gpio.h"
 
-#define REG_VMAX 0x20
+#include "esp_log.h"
+#include "driver/uart.h"
+#include "freertos/task.h"
+#include "esp_err.h"
+
 
 static const char *TAG = "tmc2209";
-static const char *TAG_TX = "tmc2209_tx";
-static const char *TAG_RX = "tmc2209_rx";
 
-// --- Helper Functions ---
-
-uint8_t tmc2209_calcCRC(uint8_t datagram[], uint8_t len)
-{
-  uint8_t crc = 0;
-  for (uint8_t i = 0; i < len; i++)
-  {
-    uint8_t current_byte = datagram[i];
-    for (uint8_t j = 0; j < 8; j++)
-    {
-      uint8_t bit = (crc ^ current_byte) & 0x01;
-      crc >>= 1;
-      if (bit)
-      {
-        crc ^= 0x8C;
-      }
-      current_byte >>= 1;
-    }
-  }
-  return crc;
-}
-
-// --- Core Library Functions ---
-
-esp_err_t tmc2209_setup(TMC2209_Driver *driver)
+esp_err_t setup_driver(TMC2209_Driver *driver)
 {
   // UART configuration (assuming UART2, adjust if needed)
   uart_config_t uart_config = {
@@ -63,22 +42,22 @@ esp_err_t tmc2209_setup(TMC2209_Driver *driver)
   }
 
   // Basic configuration (example - adjust as needed)
-  tmc2209_writeRegister(driver, REG_GCONF, 0x0000000C);
+  writeRegister(driver, REG_GCONF, 0x0000000C);
   ESP_LOGI(TAG, "GCONF configurated");
-  tmc2209_writeRegister(driver, REG_CHOPCONF, 0x000100C5);
+  writeRegister(driver, REG_CHOPCONF, 0x000100C5);
   ESP_LOGI(TAG, "CHOP_CONF configurated");
-  tmc2209_writeRegister(driver, REG_IHOLD_IRUN, 0x00011F05);
+  writeRegister(driver, REG_IHOLD_IRUN, 0x00011F05);
   ESP_LOGI(TAG, "IHOLD configurated");
-  tmc2209_writeRegister(driver, REG_TPOWERDOWN, 0x0000000A);
+  writeRegister(driver, REG_TPOWERDOWN, 0x0000000A);
   ESP_LOGI(TAG, "TPOWERDOWN configurated");
 
-  tmc2209_writeRegister(driver, REG_TPWMTHRS, 0x000001F4);
+  writeRegister(driver, REG_TPWMTHRS, 0x000001F4);
   ESP_LOGI(TAG, "PWM configurated");
 
   // Configure microstepping and current
-  tmc2209_setMicrosteps(driver, driver->settings.microsteps);
+  set_microsteps(driver, driver->settings.microsteps);
   ESP_LOGI(TAG, "Microsteps are configured");
-  tmc2209_setRMS_Current(driver, driver->settings.rms_current);
+  set_RMS_Current(driver, driver->settings.rms_current);
   ESP_LOGI(TAG, "RMS is configured");
 
   gpio_config_t io_conf = {};
@@ -94,132 +73,7 @@ esp_err_t tmc2209_setup(TMC2209_Driver *driver)
   return ESP_OK;
 }
 
-void tmc2209_rotate(TMC2209_Driver *driver, int32_t steps, uint32_t speed)
-{
-  // Set DIR pin based on the sign of steps
-  gpio_set_level(driver->dir_pin, steps >= 0 ? 0 : 1);
-
-  tmc2209_setTargetVelocity(driver, speed);
-
-  // Get the current tick count
-  TickType_t xLastWakeTime = xTaskGetTickCount();
-  // Calculate delay between steps (in microseconds)
-  uint32_t delay_us = 1000000 / speed / driver->settings.microsteps;
-
-  // Ensure delay is at least one tick
-  if (delay_us < portTICK_PERIOD_MS)
-  {
-    delay_us = portTICK_PERIOD_MS; // Minimum delay of one tick
-  }
-
-  uint32_t microsteps = abs(steps) * driver->settings.microsteps;
-
-  // Loop for the absolute value of steps
-  for (int32_t i = 0; i < microsteps; i++)
-  {
-    // Toggle STEP pin
-    gpio_set_level(driver->step_pin, 1);
-    esp_rom_delay_us(10); // Short pulse, adjust if needed
-    gpio_set_level(driver->step_pin, 0);
-
-    // Introduce delay
-    vTaskDelayUntil(&xLastWakeTime, delay_us / portTICK_PERIOD_MS);
-  }
-
-  // Switch back to UART control mode (VACTUAL = 0)
-  tmc2209_writeRegister(driver, REG_VACTUAL, 0);
-}
-
-void tmc2209_enable(TMC2209_Driver *driver)
-{
-  tmc2209_writeRegister(driver, REG_GCONF, 0x0000000F);
-}
-
-void tmc2209_disable(TMC2209_Driver *driver)
-{
-  tmc2209_writeRegister(driver, REG_GCONF, 0x0000000C);
-}
-
-// ... (Previous code from tmc2209.c)
-
-void tmc2209_moveAtVelocity(TMC2209_Driver *driver, int32_t velocity)
-{
-  tmc2209_writeRegister(driver, REG_VMAX, abs(velocity));
-  tmc2209_writeRegister(driver, REG_XDIRECT, (velocity >= 0) ? 0 : 0xFFFFFFFF); // Direction
-}
-
-esp_err_t tmc2209_readRegister(TMC2209_Driver *driver, uint8_t address, uint32_t *data)
-{
-  uint8_t tx_buf[5] = {0x05, address, 0x00, 0x00, 0x00};
-  uint8_t rx_buf[9];
-
-  tx_buf[4] = tmc2209_calcCRC(tx_buf, 4);
-
-  int tx_bytes = uart_write_bytes(driver->uart_num, (const char *)tx_buf, sizeof(tx_buf));
-  if (tx_bytes < 0)
-  {
-    return ESP_FAIL;
-  }
-
-  ESP_LOG_BUFFER_HEX(TAG_TX, tx_buf, sizeof(tx_buf)); // Log transmitted data
-
-  vTaskDelay(10 / portTICK_PERIOD_MS);
-
-  int rx_bytes = uart_read_bytes(driver->uart_num, rx_buf, sizeof(rx_buf), 20 / portTICK_PERIOD_MS);
-  if (rx_bytes < 0)
-  {
-    return ESP_FAIL;
-  }
-
-  ESP_LOG_BUFFER_HEX(TAG_RX, rx_buf, rx_bytes); // Log received data
-
-  if (tmc2209_calcCRC(rx_buf, 8) != rx_buf[8])
-  {
-    return ESP_ERR_INVALID_CRC;
-  }
-
-  *data = (rx_buf[5] << 24) | (rx_buf[6] << 16) | (rx_buf[7] << 8);
-
-  return ESP_OK;
-}
-
-esp_err_t tmc2209_writeRegister(TMC2209_Driver *driver, uint8_t address, uint32_t data)
-{
-  uint8_t tx_buf[9] = {0x05, address | 0x80, (data >> 24) & 0xFF, (data >> 16) & 0xFF, (data >> 8) & 0xFF, data & 0xFF, 0x00};
-  uint8_t rx_buf[5];
-
-  tx_buf[8] = tmc2209_calcCRC(tx_buf, 8);
-
-  int tx_bytes = uart_write_bytes(driver->uart_num, (const char *)tx_buf, sizeof(tx_buf));
-  if (tx_bytes < 0)
-  {
-    return ESP_FAIL;
-  }
-
-  ESP_LOG_BUFFER_HEX(TAG_TX, tx_buf, sizeof(tx_buf));
-
-  vTaskDelay(10 / portTICK_PERIOD_MS);
-
-  int rx_bytes = uart_read_bytes(driver->uart_num, rx_buf, sizeof(rx_buf), 20 / portTICK_PERIOD_MS);
-  if (rx_bytes < 0)
-  {
-    return ESP_FAIL;
-  }
-
-  ESP_LOG_BUFFER_HEX(TAG_RX, rx_buf, rx_bytes);
-
-  for (int i = 0; i < 5; i++)
-  {
-    if (tx_buf[i] != rx_buf[i])
-    {
-      return ESP_ERR_INVALID_RESPONSE;
-    }
-  }
-
-  return ESP_OK;
-}
-
-void tmc2209_setMicrosteps(TMC2209_Driver *driver, uint16_t microsteps)
+void set_microsteps(TMC2209_Driver *driver, uint16_t microsteps)
 {
   driver->settings.microsteps = microsteps;
 
@@ -260,12 +114,12 @@ void tmc2209_setMicrosteps(TMC2209_Driver *driver, uint16_t microsteps)
 
   // Update the MRES bits in the CHOPCONF register
   uint32_t chopconf;
-  tmc2209_readRegister(driver, REG_CHOPCONF, &chopconf);
+  readRegister(driver, REG_CHOPCONF, &chopconf);
   chopconf = (chopconf & 0xF0FFFFFF) | (MRES << 24);
-  tmc2209_writeRegister(driver, REG_CHOPCONF, chopconf);
+  writeRegister(driver, REG_CHOPCONF, chopconf);
 }
 
-void tmc2209_setRMS_Current(TMC2209_Driver *driver, uint16_t mA)
+void set_RMS_Current(TMC2209_Driver *driver, uint16_t mA)
 {
   driver->settings.rms_current = mA;
 
@@ -276,17 +130,17 @@ void tmc2209_setRMS_Current(TMC2209_Driver *driver, uint16_t mA)
 
   // Update the IRUN and IHOLD bits in the IHOLD_IRUN register
   uint32_t ihold_irun;
-  tmc2209_readRegister(driver, REG_IHOLD_IRUN, &ihold_irun);
+  readRegister(driver, REG_IHOLD_IRUN, &ihold_irun);
   ihold_irun = (ihold_irun & 0xFF000000) | (current_reg & 0x0000001F) | ((current_reg & 0x0000001F) << 8);
-  tmc2209_writeRegister(driver, REG_IHOLD_IRUN, ihold_irun);
+  writeRegister(driver, REG_IHOLD_IRUN, ihold_irun);
 }
 
-void tmc2209_setStealthchop(TMC2209_Driver *driver, bool enable)
+void setStealthchop(TMC2209_Driver *driver, bool enable)
 {
   driver->settings.stealthchop_enabled = enable;
 
   uint32_t chopconf;
-  tmc2209_readRegister(driver, REG_CHOPCONF, &chopconf);
+  readRegister(driver, REG_CHOPCONF, &chopconf);
 
   if (enable)
   {
@@ -297,15 +151,15 @@ void tmc2209_setStealthchop(TMC2209_Driver *driver, bool enable)
     chopconf |= (1 << 14); // Set CHM bit for spreadCycle
   }
 
-  tmc2209_writeRegister(driver, REG_CHOPCONF, chopconf);
+  writeRegister(driver, REG_CHOPCONF, chopconf);
 }
 
-esp_err_t tmc2209_getSettings(TMC2209_Driver *driver)
+esp_err_t get_driver_settings(TMC2209_Driver *driver)
 {
   uint32_t reg_value;
 
   // Read GCONF register
-  esp_err_t ret = tmc2209_readRegister(driver, REG_GCONF, &reg_value);
+  esp_err_t ret = readRegister(driver, REG_GCONF, &reg_value);
   if (ret != ESP_OK)
   {
     return ret;
@@ -318,7 +172,7 @@ esp_err_t tmc2209_getSettings(TMC2209_Driver *driver)
   driver->settings.internal_sense_resistors_enabled = ((reg_value >> 1) & 0x01);
 
   // Read CHOPCONF register
-  ret = tmc2209_readRegister(driver, REG_CHOPCONF, &reg_value);
+  ret = readRegister(driver, REG_CHOPCONF, &reg_value);
   if (ret != ESP_OK)
   {
     return ret;
@@ -361,7 +215,7 @@ esp_err_t tmc2209_getSettings(TMC2209_Driver *driver)
   }
 
   // Read IHOLD_IRUN register
-  ret = tmc2209_readRegister(driver, REG_IHOLD_IRUN, &reg_value);
+  ret = readRegister(driver, REG_IHOLD_IRUN, &reg_value);
   if (ret != ESP_OK)
   {
     return ret;
@@ -378,7 +232,7 @@ esp_err_t tmc2209_getSettings(TMC2209_Driver *driver)
   driver->settings.iholddelay_percent = hold_delay_setting_to_percent(IHOLDDELAY);
 
   // Read PWMCONF register
-  ret = tmc2209_readRegister(driver, REG_PWMCONF, &reg_value);
+  ret = readRegister(driver, REG_PWMCONF, &reg_value);
   if (ret != ESP_OK)
   {
     return ret;
@@ -432,61 +286,11 @@ uint8_t hold_delay_setting_to_percent(uint8_t hold_delay_setting)
   return (uint8_t)(delay_ratio * 100.0f);
 }
 
-esp_err_t tmc2209_getStatus(TMC2209_Driver *driver)
-{
-  uint32_t reg_value;
-
-  // Read DRV_STATUS register
-  esp_err_t ret = tmc2209_readRegister(driver, REG_DRV_STATUS, &reg_value);
-  if (ret != ESP_OK)
-  {
-    return ret;
-  }
-
-  // Extract status flags from DRV_STATUS
-  // ... (Implement based on the Arduino library's logic and the TMC2209 datasheet)
-
-  // Read other relevant registers and extract status information as needed
-  // ...
-
-  return ESP_OK;
-}
-
-// ... (Previous code from tmc2209.c)
-
-// Function to set the motor's target velocity in microsteps per second
-void tmc2209_setTargetVelocity(TMC2209_Driver *driver, int32_t velocity)
-{
-  // The datasheet mentions that VACTUAL allows moving the motor by UART control
-  // It gives the motor velocity in +-(2^23)-1 [usteps / t]
-  // 0: Normal operation. Driver reacts to STEP input.
-  // /=0: Motor moves with the velocity given by VACTUAL
-  // The motor direction is controlled by the sign of VACTUAL
-
-  // With internal oscillator:
-  // VACTUAL[2209] = 0.715Hz / v[Hz]
-
-  // Convert velocity (usteps/s) to VACTUAL
-  int32_t vactual = (int32_t)((0.715f / (float)velocity) * (1 << 23));
-
-  // Ensure VACTUAL is within the valid range
-  if (vactual > ((1 << 23) - 1))
-  {
-    vactual = (1 << 23) - 1;
-  }
-  else if (vactual < -((1 << 23) - 1))
-  {
-    vactual = -((1 << 23) - 1);
-  }
-
-  tmc2209_writeRegister(driver, REG_VACTUAL, vactual);
-}
-
 // Function to enable/disable CoolStep
-void tmc2209_setCoolStep(TMC2209_Driver *driver, bool enable)
+void setCoolStep(TMC2209_Driver *driver, bool enable)
 {
   uint32_t coolconf;
-  esp_err_t ret = tmc2209_readRegister(driver, REG_COOLCONF, &coolconf);
+  esp_err_t ret = readRegister(driver, REG_COOLCONF, &coolconf);
   if (ret != ESP_OK)
   {
     // Handle error reading COOLCONF
@@ -504,20 +308,20 @@ void tmc2209_setCoolStep(TMC2209_Driver *driver, bool enable)
     coolconf &= 0xFFFFFFF0;
   }
 
-  tmc2209_writeRegister(driver, REG_COOLCONF, coolconf);
+  writeRegister(driver, REG_COOLCONF, coolconf);
 }
 
 // Function to configure StallGuard4 threshold
-void tmc2209_setStallGuardThreshold(TMC2209_Driver *driver, uint8_t threshold)
+void setStallGuardThreshold(TMC2209_Driver *driver, uint8_t threshold)
 {
-  tmc2209_writeRegister(driver, REG_SGTHRS, threshold);
+  writeRegister(driver, REG_SGTHRS, threshold);
 }
 
 // Function to get the StallGuard4 result
-uint16_t tmc2209_getStallGuardResult(TMC2209_Driver *driver)
+uint16_t getStallGuardResult(TMC2209_Driver *driver)
 {
   uint32_t sg_result_reg;
-  esp_err_t ret = tmc2209_readRegister(driver, REG_SG_RESULT, &sg_result_reg);
+  esp_err_t ret = readRegister(driver, REG_SG_RESULT, &sg_result_reg);
   if (ret != ESP_OK)
   {
     // Handle error reading SG_RESULT
