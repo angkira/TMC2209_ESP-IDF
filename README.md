@@ -1,35 +1,56 @@
 | Supported Targets | ESP32 | ESP32-C2 | ESP32-C3 | ESP32-C5 | ESP32-C6 | ESP32-H2 | ESP32-P4 | ESP32-S2 | ESP32-S3 |
 | ----------------- | ----- | -------- | -------- | -------- | -------- | -------- | -------- | -------- | -------- |
 
-# _Sample project_
+# TMC2209 ESP-IDF Library
 
-(See the README.md file in the upper level 'examples' directory for more information about examples.)
+This library provides a convenient interface for controlling the TMC2209 stepper motor driver using the ESP-IDF framework on ESP32 microcontrollers. It leverages the advanced features of the TMC2209 to achieve smooth, quiet, and efficient motor control.
 
-This is the simplest buildable example. The example is used by command `idf.py create-project`
-that copies the project to user specified path and set it's name. For more information follow the [docs page](https://docs.espressif.com/projects/esp-idf/en/latest/api-guides/build-system.html#start-a-new-project)
+## Features
 
+* **StealthChop2™:** Ultra-quiet motor operation, ideal for noise-sensitive applications.
+* **SpreadCycle™:** Highly dynamic motor control with excellent resonance dampening.
+* **MicroPlyer™:** Smooth 256 microsteps interpolation for precise movements.
+* **StallGuard4™:** Sensorless load and stall detection for enhanced safety and diagnostics.
+* **CoolStep™:** Load-adaptive current control for energy savings and reduced heat generation.
+* **UART Interface:**  Configure and monitor the driver using a simple UART connection.
+* **STEP/DIR Interface:**  Compatible with traditional step/direction motor control signals.
+* **Internal Pulse Generator:**  Standalone motion control without external STEP pulses.
 
+## Installation
 
-## How to use example
-We encourage the users to use the example as a template for the new projects.
-A recommended way is to follow the instructions on a [docs page](https://docs.espressif.com/projects/esp-idf/en/latest/api-guides/build-system.html#start-a-new-project).
+1. Clone this repository into your ESP-IDF project's `components` directory.
+2. Add `tmc2209` to the `COMPONENT_SRCS` list in your `CMakeLists.txt`.
 
-## Example folder contents
+## Usage
 
-The project **sample_project** contains one source file in C language [main.c](main/main.c). The file is located in folder [main](main).
+1. Include the `tmc2209.h` header file in your code.
+2. Create a `TMC2209_Driver` struct and populate its `settings` field with your desired configuration.
+3. Call the `setup_driver` function to initialize the driver and apply the settings.
+4. Use the provided functions (e.g., `rotate`, `move_at_velocity`) to control the motor.
 
-ESP-IDF projects are built using CMake. The project build configuration is contained in `CMakeLists.txt`
-files that provide set of directives and instructions describing the project's source files and targets
-(executable, library, or both). 
+## Example
 
-Below is short explanation of remaining files in the project folder.
+```c
+#include "tmc2209.h"
 
-```
-├── CMakeLists.txt
-├── main
-│   ├── CMakeLists.txt
-│   └── main.c
-└── README.md                  This is the file you are currently reading
-```
-Additionally, the sample project contains Makefile and component.mk files, used for the legacy Make based build system. 
-They are not used or needed when building with CMake and idf.py.
+void app_main() {
+    TMC2209_Driver motorDriver;
+    motorDriver.uart_num = UART_NUM_1;
+    motorDriver.dir_pin = 6;
+    motorDriver.step_pin = 7;
+
+    // Configure driver settings (adjust as needed)
+    motorDriver.settings.rms_current = 500; 
+    motorDriver.settings.microsteps = 16;
+    motorDriver.settings.stealthchop.enabled = true;
+    // ... other settings
+
+    // Setup the driver
+    esp_err_t err = setup_driver(&motorDriver);
+    if (err != ESP_OK) {
+        // Handle error
+    }
+
+    // Control the motor
+    rotate(&motorDriver, 90.0, 500); // Rotate 90 degrees at max 500 steps/s
+}
