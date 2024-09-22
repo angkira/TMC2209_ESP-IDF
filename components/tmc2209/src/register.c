@@ -49,7 +49,7 @@ esp_err_t readRegister(TMC2209_Driver *driver, uint8_t address, uint32_t *data)
 
   vTaskDelay(10 / portTICK_PERIOD_MS);
 
-  int rx_bytes = uart_read_bytes(driver->uart_num, rx_buf, sizeof(rx_buf), 20 / portTICK_PERIOD_MS);
+  int rx_bytes = uart_read_bytes(driver->uart_num, rx_buf, sizeof(rx_buf), 40 / portTICK_PERIOD_MS);
   if (rx_bytes < 0)
   {
     return ESP_FAIL;

@@ -1,12 +1,13 @@
 #include "control.h"
 #include "register.h"
+#include "setup.h"
 #include "driver.dto.h"
 
 #include "driver/gpio.h"
 
 #include "esp_log.h"
 
-void rotate_motor(TMC2209_Driver *driver, int32_t steps, uint32_t speed)
+void rotate_motor(TMC2209_Driver *driver, int32_t steps, uint32_t speed, TMC2209_ChopperMode mode)
 {
   // Set DIR pin based on the sign of steps
   gpio_set_level(driver->dir_pin, steps >= 0 ? 0 : 1);
@@ -51,8 +52,6 @@ void disable_driver(TMC2209_Driver *driver)
 {
   writeRegister(driver, REG_GCONF, 0x0000000C);
 }
-
-// ... (Previous code from tmc2209.c)
 
 void moveAtVelocity(TMC2209_Driver *driver, int32_t velocity)
 {
