@@ -16,7 +16,22 @@ void app_main()
   motorDriver.settings.driver_address = TMC2209_ADDRESS;
   motorDriver.settings.rms_current = 800;
   motorDriver.settings.microsteps = 64;
-  motorDriver.settings.stealthchop_enabled = true;
+
+  TMC2209_SpreadCycleConfig spreadCycleConfig = {
+      .enabled = true,
+      .slow_decay_time = 5,
+      .blank_time = 2,
+      .hysteresis_start = 0,
+      .hysteresis_end = 0
+  };
+
+  TMC2209_StealthchopConfig stealthchopConfig = {
+      .enabled = false,
+  };
+
+  motorDriver.settings.spreadcycle = spreadCycleConfig;
+  motorDriver.settings.stealthchop = stealthchopConfig;
+
   // Setup the driver
   esp_err_t err = setup_driver(&motorDriver);
   if (err != ESP_OK)
@@ -33,7 +48,7 @@ void app_main()
   ESP_LOGI(TAG, "Starting motor movement...");
   // moveAtVelocity(&motorDriver, 10000);
 
-  rotate_motor(&motorDriver, 20000, 100000);
+  rotate_motor(&motorDriver, 200, 1000000, CHOPPER_MODE_SPREADCYCLE);
 
   // vTaskDelay(20000 / portTICK_PERIOD_MS);
 

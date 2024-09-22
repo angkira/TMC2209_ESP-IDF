@@ -1,4 +1,3 @@
-#include "tmc2209.h"
 #include "setup.h"
 #include "register.h"
 #include "driver.dto.h"
@@ -9,7 +8,6 @@
 #include "driver/uart.h"
 #include "freertos/task.h"
 #include "esp_err.h"
-
 
 static const char *TAG = "tmc2209";
 
@@ -41,24 +39,247 @@ esp_err_t setup_driver(TMC2209_Driver *driver)
     return ESP_FAIL;
   }
 
-  // Basic configuration (example - adjust as needed)
-  writeRegister(driver, REG_GCONF, 0x0000000C);
-  ESP_LOGI(TAG, "GCONF configurated");
-  writeRegister(driver, REG_CHOPCONF, 0x000100C5);
-  ESP_LOGI(TAG, "CHOP_CONF configurated");
-  writeRegister(driver, REG_IHOLD_IRUN, 0x00011F05);
-  ESP_LOGI(TAG, "IHOLD configurated");
-  writeRegister(driver, REG_TPOWERDOWN, 0x0000000A);
-  ESP_LOGI(TAG, "TPOWERDOWN configurated");
+  // 1. GCONF Register Configuration
+  uint32_t gconf = 0;
 
-  writeRegister(driver, REG_TPWMTHRS, 0x000001F4);
-  ESP_LOGI(TAG, "PWM configurated");
+  // Bit 0: i_scale_analog (Internal vs. External VREF)
+  if (driver->settings.analog_current_scaling_enabled)
+  {
+    gconf |= 1; // Use external VREF
+  }
 
-  // Configure microstepping and current
-  set_microsteps(driver, driver->settings.microsteps);
-  ESP_LOGI(TAG, "Microsteps are configured");
-  set_RMS_Current(driver, driver->settings.rms_current);
-  ESP_LOGI(TAG, "RMS is configured");
+  // Bit 1: internal_Rsense (Internal vs. External Sense Resistors)
+  if (driver->settings.internal_sense_resistors_enabled)
+  {
+    gconf |= (1 << 1); // Use internal sense resistors
+  }
+
+  // Bit 3: shaft (Inverse Motor Direction)
+  if (driver->settings.inverse_motor_direction_enabled)
+  {
+    gconf |= (1 << 4);
+  }
+
+  // Bit 7: diag0_error (Enable/Disable DIAG0 active on driver errors)
+  if (driver->settings.diag0_error_enabled)
+  {
+    gconf |= (1 << 7);
+  }
+
+  // Bit 11: diag0_otpw (Enable/Disable DIAG0 active on over temperatur warning)
+  if (driver->settings.diag0_otpw_enabled)
+  {
+    gconf |= (1 << 11);
+  }
+
+  // Bit 12: diag0_stall (Enable/Disable DIAG0 active on stallguard2)
+  if (driver->settings.diag0_stall_enabled)
+  {
+    gconf |= (1 << 12);
+  }
+
+  // Bit 13: diag1_stall (Enable/Disable DIAG1 active on stallguard2)
+  if (driver->settings.diag1_stall_enabled)
+  {
+    gconf |= (1 << 13);
+  }
+
+  // Bit 14: diag1_index (Enable/Disable DIAG1 active on index)
+  if (driver->settings.diag1_index_enabled)
+  {
+    gconf |= (1 << 14);
+  }
+
+  // Bit 15: diag1_onstate (Enable/Disable DIAG1 active on ON_STATE)
+  if (driver->settings.diag1_onstate_enabled)
+  {
+    gconf |= (1 << 15);
+  }
+
+  ESP_ERROR_CHECK(writeRegister(driver, REG_GCONF, gconf));
+
+  // writeStealthchopConfig(driver, &driver->settings.stealthchop);
+  // writeSpreadCycleConfig(driver, &driver->settings.spreadcycle);
+  // 2. CHOPCONF Register Configuration
+  uint32_t chopconf = 0;
+
+  // Bits 24-27: MRES (Microstep Resolution)
+  uint8_t mres = 0;
+  switch (driver->settings.microsteps)
+  {
+  case 256:
+    mres = 0;
+    break;
+  case 128:
+    mres = 1;
+    break;
+  case 64:
+    mres = 2;
+    break;
+  case 32:
+    mres = 3;
+    break;
+  case 16:
+    mres = 4;
+    break;
+  case 8:
+    mres = 5;
+    break;
+  case 4:
+    mres = 6;
+    break;
+  case 2:
+    mres = 7;
+    break;
+  case 1:
+    mres = 8;
+    break; // Full step
+  default:
+    ESP_LOGE(TAG, "Invalid microsteps value: %d", driver->settings.microsteps);
+    return ESP_ERR_INVALID_ARG;
+  }
+  chopconf |= (mres << 24);
+
+  // Bit 17: vsense (Sense Resistor Voltage Selection)
+  if (driver->settings.vsense)
+  {
+    chopconf |= (1 << 17); // High sensitivity, low sense resistor voltage
+  }
+
+  // Bit 27: intpol (Interpolation for 256 Microsteps)
+  if (driver->settings.interpolate_to_256_microsteps)
+  {
+    chopconf |= (1 << 27);
+  }
+
+  // Bit 28: dedge (Enable Double Edge STEP pulses)
+  if (driver->settings.enable_double_edge_step_pulses)
+  {
+    chopconf |= (1 << 28);
+  }
+
+  // Bits 29-31: Short circuit protection settings
+  // Configure based on your desired protection level
+  // Example:
+  chopconf |= 0; // All short protection enabled (default)
+  // Or disable specific protections if needed:
+  // chopconf |= (1 << 29);  // Disable short to GND protection
+  // chopconf |= (1 << 30);  // Disable short to VS protection
+  // chopconf |= (1 << 31);  // Disable low-side short protection
+
+  // ESP_ERROR_CHECK(writeRegister(driver, REG_CHOPCONF, chopconf));
+
+  // 3. Enable the chopper based on the enabled mode
+  if (driver->settings.stealthchop.enabled)
+  {
+    // writeStealthchopConfig(driver, &driver->settings.stealthchop);
+
+    // Enable StealthChop using the TOFF value from CHOPCONF
+    uint8_t toff = chopconf & 0x0F; // Extract TOFF from CHOPCONF
+    ESP_ERROR_CHECK(writeRegister(driver, REG_CHOPCONF, (chopconf & 0xFFFFFFF0) | toff));
+  }
+  else if (driver->settings.spreadcycle.enabled)
+  {
+    // writeSpreadCycleConfig(driver, &driver->settings.spreadcycle);
+
+    // Enable SpreadCycle using the TOFF value from CHOPCONF
+    uint8_t toff = chopconf & 0x0F; // Extract TOFF from CHOPCONF
+    ESP_ERROR_CHECK(writeRegister(driver, REG_CHOPCONF, (chopconf & 0xFFFFFFF0) | toff));
+  }
+  else
+  {
+    ESP_LOGE(TAG, "No chopper mode enabled");
+    return ESP_ERR_INVALID_ARG;
+  }
+
+  // 4. IHOLD_IRUN Register
+
+  uint32_t ihold_irun = 0;
+
+  // Bits 8-12: IRUN (Motor Run Current)
+  // Convert RMS current to IRUN using datasheet formula and table
+  float sense_resistor = driver->settings.internal_sense_resistors_enabled ? 0.11 : 0.18; // Adjust if using different sense resistors
+  uint8_t irun = (uint8_t)((driver->settings.rms_current * 256.0) / 1.41421 / 1000.0 / sense_resistor);
+  if (irun > 31)
+  {
+    irun = 31; // Limit to maximum value
+  }
+  ihold_irun |= (irun << 8);
+
+  // Bits 0-4: IHOLD (Motor Hold Current)
+  // Calculate IHOLD based on irun and ihold_percent
+  uint8_t ihold = (uint8_t)((irun * driver->settings.ihold_percent) / 100.0);
+  if (ihold > 31)
+  {
+    ihold = 31; // Limit to maximum value
+  }
+  ihold_irun |= ihold;
+
+  // Bits 16-19: IHOLDDELAY (Hold Current Delay)
+  // Convert iholddelay_percent to IHOLDDELAY
+  // Assuming iholddelay_percent represents the percentage of the maximum delay
+  // Maximum IHOLDDELAY value is 15, representing 2^15 * 2 clock cycles delay
+  uint8_t iholddelay = (uint8_t)((driver->settings.iholddelay_percent / 100.0) * 15);
+  ihold_irun |= (iholddelay << 16);
+
+  ESP_ERROR_CHECK(writeRegister(driver, REG_IHOLD_IRUN, ihold_irun));
+
+  // 5. TPOWERDOWN Register
+
+  uint32_t tpowerdown = 0;
+
+  // Bits 0-7: TPOWERDOWN (Power Down Delay)
+  // Convert standstill current timeout from seconds to register value (0-255)
+  // Formula: TPOWERDOWN = timeout[s] * 2^18 / 10
+  tpowerdown = (uint32_t)(driver->settings.standstill_current_timeout * (1 << 18) / 10.0);
+  if (tpowerdown > 255)
+  {
+    tpowerdown = 255; // Limit to maximum value
+  }
+
+  ESP_ERROR_CHECK(writeRegister(driver, REG_TPOWERDOWN, tpowerdown));
+
+  // 6. COOLCONF Register (if CoolStep is enabled)
+
+  if (driver->settings.coolstep_enabled)
+  {
+    uint32_t coolconf = 0;
+
+    // Bits 0-3: semin (Minimum StallGuard Value for CoolStep)
+    // Set semin to a non-zero value to enable CoolStep
+    // You might want to adjust this value based on your motor and application
+    coolconf |= 1; // Example: Set semin to 1 (minimum value to enable)
+
+    // Bits 4-7: semax (Maximum StallGuard Value for CoolStep)
+    // Set semax to a value higher than semin
+    // You might want to adjust this value based on your motor and application
+    coolconf |= (10 << 4); // Example: Set semax to 10
+
+    // Bit 24: seimin (Minimum Current Decrease per Full-Step)
+    // Set seimin to control the minimum current decrease
+    // You might want to adjust this value based on your motor and application
+    coolconf |= (1 << 24); // Example: Set seimin to 1
+
+    // Bit 25: semax (Maximum Current Decrease per Full-Step)
+    // Set semax to a value higher than seimin
+    // You might want to adjust this value based on your motor and application
+    coolconf |= (5 << 25); // Example: Set semax to 5
+
+    // Bit 28: sgt (Enable/Disable StallGuard Threshold)
+    if (driver->settings.stallguard_enabled)
+    {
+      coolconf |= (1 << 28);
+    }
+
+    ESP_ERROR_CHECK(writeRegister(driver, REG_COOLCONF, coolconf));
+  }
+
+  // 7. SGTHRS Register (if StallGuard is enabled)
+
+  if (driver->settings.stallguard_enabled)
+  {
+    ESP_ERROR_CHECK(writeRegister(driver, REG_SGTHRS, driver->settings.stallguard_threshold));
+  }
 
   gpio_config_t io_conf = {};
   io_conf.intr_type = GPIO_INTR_DISABLE;
@@ -68,7 +289,7 @@ esp_err_t setup_driver(TMC2209_Driver *driver)
   io_conf.pull_up_en = 0;
   gpio_config(&io_conf);
 
-  ESP_LOGI(TAG, "STEP_DIR pins configurated");
+  ESP_LOGI(TAG, "STEP_DIR pins configured");
 
   return ESP_OK;
 }
@@ -137,7 +358,7 @@ void set_RMS_Current(TMC2209_Driver *driver, uint16_t mA)
 
 void setStealthchop(TMC2209_Driver *driver, bool enable)
 {
-  driver->settings.stealthchop_enabled = enable;
+  driver->settings.stealthchop.enabled = enable;
 
   uint32_t chopconf;
   readRegister(driver, REG_CHOPCONF, &chopconf);
@@ -166,7 +387,7 @@ esp_err_t get_driver_settings(TMC2209_Driver *driver)
   }
 
   // Extract settings from GCONF
-  driver->settings.stealthchop_enabled = ((reg_value >> 3) & 0x01) == 0;
+  driver->settings.stealthchop.enabled = ((reg_value >> 3) & 0x01) == 0;
   driver->settings.inverse_motor_direction_enabled = (reg_value >> 4) & 0x01;
   driver->settings.analog_current_scaling_enabled = (reg_value & 0x01);
   driver->settings.internal_sense_resistors_enabled = ((reg_value >> 1) & 0x01);
@@ -240,7 +461,7 @@ esp_err_t get_driver_settings(TMC2209_Driver *driver)
 
   // Extract settings from PWMCONF
   driver->settings.standstill_mode = (reg_value >> 13) & 0x03;
-  driver->settings.automatic_current_scaling_enabled = (reg_value >> 11) & 0x01;
+  driver->settings.automatic_pwm_scaling_enabled = (reg_value >> 11) & 0x01;
   driver->settings.automatic_gradient_adaptation_enabled = (reg_value >> 12) & 0x01;
   driver->settings.pwm_offset = reg_value & 0xFF;
   driver->settings.pwm_gradient = (reg_value >> 8) & 0xFF;
@@ -329,4 +550,90 @@ uint16_t getStallGuardResult(TMC2209_Driver *driver)
   }
 
   return (uint16_t)(sg_result_reg & 0x3FF); // Extract 10-bit SG_RESULT value
+}
+
+void setChopperMode(TMC2209_Driver *driver, TMC2209_ChopperMode mode)
+{
+  uint32_t gconf;
+  ESP_ERROR_CHECK(readRegister(driver, REG_GCONF, &gconf));
+
+  if (mode == CHOPPER_MODE_STEALTHCHOP)
+  {
+    gconf &= ~(1 << 2); // Clear en_SpreadCycle bit for StealthChop
+  }
+  else if (mode == CHOPPER_MODE_SPREADCYCLE)
+  {
+    gconf |= (1 << 2); // Set en_SpreadCycle bit for SpreadCycle
+  }
+  else
+  {
+    ESP_LOGE(TAG, "Invalid chopper mode: %d", mode);
+    return; // Or handle the error appropriately
+  }
+
+  ESP_ERROR_CHECK(writeRegister(driver, REG_GCONF, gconf));
+}
+
+// Function to write StealthChop configuration to the TMC2209 driver
+void writeStealthchopConfig(TMC2209_Driver *driver, const TMC2209_StealthchopConfig *config)
+{
+
+  // Configure PWMCONF register
+  uint32_t pwmconf = 0;
+
+  // Bit 10: pwm_autoscale
+  if (config->pwm_autoscale)
+  {
+    pwmconf |= (1 << 10);
+  }
+
+  // Bit 18: pwm_autograd
+  if (config->pwm_auto_gradient_adaptation)
+  {
+    pwmconf |= (1 << 18);
+  }
+
+  // Bits 15-17: pwm_freq
+  pwmconf |= (config->pwm_frequency & 0x03) << 15;
+
+  // Bits 0-7: pwm_ofs
+  pwmconf |= config->pwm_offset & 0xFF;
+
+  // Bits 8-14: pwm_grad
+  pwmconf |= (config->pwm_gradient & 0x7F) << 8;
+
+  // Bits 20-21: freewheel (Standstill Mode)
+  pwmconf |= (config->standstill_mode & 0x03) << 20;
+
+  // Bits 28-31: pwm_lim (PWM Limit)
+  pwmconf |= (config->pwm_amplitude_limit & 0x0F) << 28;
+
+  ESP_ERROR_CHECK(writeRegister(driver, REG_PWMCONF, pwmconf));
+
+  // 3. Configure TPWMTHRS register (if hybrid mode is used)
+  if (config->velocity_threshold > 0)
+  {
+    ESP_ERROR_CHECK(writeRegister(driver, REG_TPWMTHRS, config->velocity_threshold));
+  }
+}
+
+// Function to write SpreadCycle configuration to the TMC2209 driver
+void writeSpreadCycleConfig(TMC2209_Driver *driver, const TMC2209_SpreadCycleConfig *config)
+{
+  // Configure CHOPCONF register
+  uint32_t chopconf = 0;
+
+  // Bits 0-3: toff (Slow Decay Time)
+  chopconf |= config->slow_decay_time & 0x0F;
+
+  // Bits 14-15: tbl (Blank Time)
+  chopconf |= (config->blank_time & 0x03) << 14;
+
+  // Bits 4-7: hstrt (Hysteresis Start Value)
+  chopconf |= (config->hysteresis_start & 0x0F) << 4;
+
+  // Bits 8-13: hend (Hysteresis End Value)
+  chopconf |= (config->hysteresis_end & 0x3F) << 8;
+
+  ESP_ERROR_CHECK(writeRegister(driver, REG_CHOPCONF, chopconf));
 }
