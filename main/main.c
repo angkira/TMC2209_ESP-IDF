@@ -15,15 +15,20 @@ void app_main()
   // Initialize driver settings
   motorDriver.settings.driver_address = TMC2209_ADDRESS;
   motorDriver.settings.rms_current = 800;
-  motorDriver.settings.microsteps = 64;
+  motorDriver.settings.microsteps = 1;
+  motorDriver.settings.full_steps_per_rev = 200;
+  motorDriver.settings.irun_percent = 80;
+  motorDriver.settings.ihold_percent = 50;
+  motorDriver.settings.vmax = (1 << 23) - 1;
+  motorDriver.settings.internal_sense_resistors_enabled = true;
+  motorDriver.settings.interpolate_to_256_microsteps = true;
 
   TMC2209_SpreadCycleConfig spreadCycleConfig = {
       .enabled = true,
       .slow_decay_time = 5,
       .blank_time = 2,
       .hysteresis_start = 0,
-      .hysteresis_end = 0
-  };
+      .hysteresis_end = 0};
 
   TMC2209_StealthchopConfig stealthchopConfig = {
       .enabled = false,
@@ -48,7 +53,7 @@ void app_main()
   ESP_LOGI(TAG, "Starting motor movement...");
   // moveAtVelocity(&motorDriver, 10000);
 
-  rotate_motor(&motorDriver, 200, 1000000, CHOPPER_MODE_SPREADCYCLE);
+  rotate_motor_by_steps(&motorDriver, 20000, 8 * 200 * 3);
 
   // vTaskDelay(20000 / portTICK_PERIOD_MS);
 

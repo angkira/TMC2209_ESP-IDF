@@ -96,6 +96,8 @@ esp_err_t setup_driver(TMC2209_Driver *driver)
   set_RMS_Current(driver, driver->settings.rms_current);
   ESP_LOGI(TAG, "RMS is configured");
 
+  writeRegister(driver, REG_VMAX, driver->settings.vmax);
+
   gpio_config_t io_conf = {};
   io_conf.intr_type = GPIO_INTR_DISABLE;
   io_conf.mode = GPIO_MODE_OUTPUT;
@@ -562,7 +564,7 @@ uint32_t configure_coolconf(const TMC2209_Settings *settings)
 {
   uint32_t coolconf = 0;
 
-  if (settings->coolstep_enabled)
+  if (settings->coolstep.enabled)
   {
     // Bits 0-3: semin (Minimum StallGuard Value for CoolStep)
     coolconf |= 1; // Example: Set semin to 1
@@ -571,10 +573,10 @@ uint32_t configure_coolconf(const TMC2209_Settings *settings)
     coolconf |= (10 << 4);
 
     // Bits 5-6: seup (Current Up Step Width)
-    coolconf |= (settings->coolstep_current_up_step_width & 0x03) << 5;
+    coolconf |= (settings->coolstep.current_up_step_width & 0x03) << 5;
 
     // Bits 16-19: sedec (Current Down Step Speed)
-    coolconf |= (settings->coolstep_current_down_step_speed & 0x0F) << 16;
+    coolconf |= (settings->coolstep.current_down_step_speed & 0x0F) << 16;
 
     // Bit 24: seimin (Minimum Current Decrease per Full-Step)
     coolconf |= (1 << 24);

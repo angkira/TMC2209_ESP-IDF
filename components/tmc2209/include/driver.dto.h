@@ -10,7 +10,8 @@
 // Stallguard Configuration Structure
 typedef struct
 {
-    bool enabled;             // Enable/disable StallGuard
+    bool enabled; // Enable/disable StallGuard
+
     uint8_t threshold;        // StallGuard threshold value (SG_THRS register)
     bool filter_enabled;      // Enable/disable StallGuard filter (SGFILT bit in CHOPCONF)
     bool hysteresis_enabled;  // Enable/disable StallGuard hysteresis (SGHST bit in COOLCONF)
@@ -21,7 +22,8 @@ typedef struct
 // StealthChop Configuration Structure
 typedef struct
 {
-    bool enabled;                      // Enable/disable StealthChop
+    bool enabled; // Enable/disable StealthChop
+
     uint32_t velocity_threshold;       // Velocity threshold for switching to SpreadCycle (if used in hybrid mode)
     uint8_t pwm_amplitude_limit;       // PWM amplitude limit when switching on from SpreadCycle
     uint8_t pwm_regulation_gradient;   // Maximum PWM amplitude change per half wave
@@ -36,7 +38,8 @@ typedef struct
 // SpreadCycle Configuration Structure
 typedef struct
 {
-    bool enabled;             // Enable/disable SpreadCycle
+    bool enabled; // Enable/disable SpreadCycle
+
     uint8_t slow_decay_time;  // Slow decay time (toff)
     uint8_t blank_time;       // Comparator blank time (tbl)
     uint8_t hysteresis_start; // Hysteresis start value (hstrt)
@@ -45,9 +48,21 @@ typedef struct
 
 typedef struct
 {
+    bool enabled;
+
+    uint8_t current_up_step_width;
+    uint8_t current_down_step_speed;
+
+} TMC2209_CoolstepConfig;
+
+typedef struct
+{
     uint8_t driver_address;
     uint16_t rms_current;
     uint16_t microsteps;
+    uint32_t vmax;
+
+    uint8_t full_steps_per_rev;
 
     bool stealthchop_enabled;
     bool inverse_motor_direction_enabled;
@@ -58,8 +73,6 @@ typedef struct
     bool index_step_enabled;
     uint8_t irun_percent;
     uint8_t iholddelay_percent;
-
-    bool coolstep_enabled;
 
     float standstill_current_timeout;
     bool vsense;
@@ -73,12 +86,11 @@ typedef struct
 
     bool interpolate_to_256_microsteps;
     bool enable_double_edge_step_pulses;
-    uint8_t coolstep_current_up_step_width;
-    uint8_t coolstep_current_down_step_speed;
 
     TMC2209_StallguardConfig stallguard;
     TMC2209_StealthchopConfig stealthchop;
     TMC2209_SpreadCycleConfig spreadcycle;
+    TMC2209_CoolstepConfig coolstep;
 } TMC2209_Settings;
 
 typedef struct

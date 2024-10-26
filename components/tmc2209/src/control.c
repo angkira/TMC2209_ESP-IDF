@@ -7,7 +7,7 @@
 
 #include "esp_log.h"
 
-void rotate_motor(TMC2209_Driver *driver, int32_t steps, uint32_t speed, TMC2209_ChopperMode mode)
+void rotate_motor_by_steps(TMC2209_Driver *driver, int32_t steps, uint32_t speed)
 {
   // Set DIR pin based on the sign of steps
   gpio_set_level(driver->dir_pin, steps >= 0 ? 0 : 1);
@@ -29,6 +29,51 @@ void rotate_motor(TMC2209_Driver *driver, int32_t steps, uint32_t speed, TMC2209
 
   // Loop for the absolute value of steps
   for (int32_t i = 0; i < microsteps; i++)
+  {
+    // Toggle STEP pin
+    gpio_set_level(driver->step_pin, 1);
+    esp_rom_delay_us(10); // Short pulse, adjust if needed
+    gpio_set_level(driver->step_pin, 0);
+
+    // Introduce delay
+    vTaskDelayUntil(&xLastWakeTime, delay_us / portTICK_PERIOD_MS);
+  }
+
+  // Switch back to UART control mode (VACTUAL = 0)
+  writeRegister(driver, REG_VACTUAL, 0);
+}
+
+void rotate_motor_by_angle(TMC2209_Driver *driver, float angle, uint32_t speed)
+{
+  // Calculate the number of steps required to move the motor by the specified angle
+  int32_t steps = (int32_t)(driver->settings.full_steps_per_rev * angle / 360.0f);
+
+  // Rotate the motor by the calculated number of steps
+  rotate_motor_by_steps(driver, steps, speed);
+}
+
+void rotate_by_steps(TMC2209_Driver *driver, int32_t steps, uint32_t velocity_sps)
+{
+  // Set DIR pin based on the sign of steps
+  gpio_set_level(driver->dir_pin, steps >= 0 ? 0 : 1);
+
+  set_target_velocity(driver, velocity_sps * driver->settings.microsteps);
+
+  // Get the current tick count
+  TickType_t xLastWakeTime = xTaskGetTickCount();
+
+  // Calculate delay between steps (in microseconds)
+  // 1 second has 1000000 microseconds
+  uint32_t delay_us = 1000000 / velocity_sps / driver->settings.microsteps;
+
+  // Ensure delay is at least one tick
+  if (delay_us < portTICK_PERIOD_MS)
+  {
+    delay_us = portTICK_PERIOD_MS; // Minimum delay of one tick
+  }
+
+  // Loop for the absolute value of steps
+  for (int32_t i = 0; i < abs(steps); i++)
   {
     // Toggle STEP pin
     gpio_set_level(driver->step_pin, 1);
