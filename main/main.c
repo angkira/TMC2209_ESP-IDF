@@ -11,11 +11,13 @@ void app_main()
   motorDriver.uart_num = UART_NUM_1;
   motorDriver.dir_pin = 6;
   motorDriver.step_pin = 7;
+  motorDriver.tx_pin = 17;
+  motorDriver.rx_pin = 18;
 
   // Initialize driver settings
   motorDriver.settings.driver_address = TMC2209_ADDRESS;
   motorDriver.settings.rms_current = 600;
-  motorDriver.settings.microsteps = 8;
+  motorDriver.settings.microsteps = 16;
   motorDriver.settings.full_steps_per_rev = 200;
   motorDriver.settings.irun_percent = 80;
   motorDriver.settings.ihold_percent = 20;

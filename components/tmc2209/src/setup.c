@@ -25,7 +25,7 @@ esp_err_t setup_driver(TMC2209_Driver *driver)
   ESP_ERROR_CHECK(uart_param_config(driver->uart_num, &uart_config));
 
   // Set UART pins (adjust GPIO numbers if needed)
-  ESP_ERROR_CHECK(uart_set_pin(driver->uart_num, 17, 18, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
+  ESP_ERROR_CHECK(uart_set_pin(driver->uart_num, driver->tx_pin, driver->rx_pin, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
 
   // Install UART driver
   int uart_driver_status = uart_is_driver_installed(driver->uart_num);

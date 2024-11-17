@@ -103,6 +103,8 @@ typedef struct
 typedef struct
 {
     uart_port_t uart_num;
+    gpio_num_t tx_pin;
+    gpio_num_t rx_pin;
     TMC2209_Settings settings;
     TMC2209_Status status;
     gpio_num_t step_pin;
