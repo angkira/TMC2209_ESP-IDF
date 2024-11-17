@@ -14,12 +14,12 @@ void app_main()
 
   // Initialize driver settings
   motorDriver.settings.driver_address = TMC2209_ADDRESS;
-  motorDriver.settings.rms_current = 800;
-  motorDriver.settings.microsteps = 1;
+  motorDriver.settings.rms_current = 600;
+  motorDriver.settings.microsteps = 8;
   motorDriver.settings.full_steps_per_rev = 200;
   motorDriver.settings.irun_percent = 80;
-  motorDriver.settings.ihold_percent = 50;
-  motorDriver.settings.vmax = (1 << 23) - 1;
+  motorDriver.settings.ihold_percent = 20;
+  // motorDriver.settings.vmax = (1 << 23) - 1;
   motorDriver.settings.internal_sense_resistors_enabled = true;
   motorDriver.settings.interpolate_to_256_microsteps = true;
 
@@ -53,7 +53,11 @@ void app_main()
   ESP_LOGI(TAG, "Starting motor movement...");
   // moveAtVelocity(&motorDriver, 10000);
 
-  rotate_motor_by_steps(&motorDriver, 20000, 8 * 200 * 3);
+  // rotate_by_steps(&motorDriver, 2000, 2 * 200);
+  // rotate_by_steps(&motorDriver, -2000, 2 * 200);
+
+  rotate_by_angle(&motorDriver, 360, 120);
+  rotate_by_angle(&motorDriver, -360, 120);
 
   // vTaskDelay(20000 / portTICK_PERIOD_MS);
 

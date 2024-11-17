@@ -1,23 +1,48 @@
+#include "driver/gpio.h"
+#include "esp_log.h"
+#include "esp_task_wdt.h"
+
 #include "control.h"
 #include "register.h"
 #include "setup.h"
 #include "driver.dto.h"
 
-#include "driver/gpio.h"
+static const char *TAG = "control";
 
-#include "esp_log.h"
-
-void rotate_motor_by_steps(TMC2209_Driver *driver, int32_t steps, uint32_t speed)
+void rotate_by_steps(TMC2209_Driver *driver, int32_t steps, uint32_t speed_steps_per_second)
 {
-  // Set DIR pin based on the sign of steps
-  gpio_set_level(driver->dir_pin, steps >= 0 ? 0 : 1);
+  // Get the current task handle
+  TaskHandle_t task_handle = xTaskGetCurrentTaskHandle();
+  bool wdt_registered = false;
 
-  set_target_velocity(driver, speed);
+  // Initialize the watchdog timer with a longer timeout
+  esp_task_wdt_config_t wdt_config = {
+      .timeout_ms = 10000,  // 10 seconds timeout
+      .idle_core_mask = 0,  // No idle cores
+      .trigger_panic = false // Trigger panic on timeout
+  };
 
-  // Get the current tick count
-  TickType_t xLastWakeTime = xTaskGetTickCount();
+  esp_task_wdt_reconfigure(&wdt_config);
+
+  // Register the current task with the watchdog timer
+  esp_err_t err = esp_task_wdt_add(task_handle);
+  if (err == ESP_ERR_INVALID_STATE)
+  {
+    ESP_LOGW(TAG, "Task already registered with WDT");
+    wdt_registered = true;
+  }
+  else if (err == ESP_OK)
+  {
+    wdt_registered = true;
+  }
+  else
+  {
+    ESP_LOGE(TAG, "Failed to register task with WDT: %s", esp_err_to_name(err));
+    return;
+  }
+
   // Calculate delay between steps (in microseconds)
-  uint32_t delay_us = 1000000 / speed / driver->settings.microsteps;
+  uint32_t delay_us = 1000000 / speed_steps_per_second / driver->settings.microsteps;
 
   // Ensure delay is at least one tick
   if (delay_us < portTICK_PERIOD_MS)
@@ -27,65 +52,59 @@ void rotate_motor_by_steps(TMC2209_Driver *driver, int32_t steps, uint32_t speed
 
   uint32_t microsteps = abs(steps) * driver->settings.microsteps;
 
-  // Loop for the absolute value of steps
+  ESP_LOGI(TAG, "Rotating motor by %" PRId32 " steps at %lu steps per second", steps, speed_steps_per_second);
+  ESP_LOGI(TAG, "Delay between steps: %lu", delay_us);
+
+  // Set DIR pin based on the sign of steps
+  gpio_set_level(driver->dir_pin, steps >= 0 ? 0 : 1);
+
   for (int32_t i = 0; i < microsteps; i++)
   {
     // Toggle STEP pin
     gpio_set_level(driver->step_pin, 1);
-    esp_rom_delay_us(10); // Short pulse, adjust if needed
+
+    esp_rom_delay_us(delay_us);
+
     gpio_set_level(driver->step_pin, 0);
 
-    // Introduce delay
-    vTaskDelayUntil(&xLastWakeTime, delay_us / portTICK_PERIOD_MS);
+    esp_rom_delay_us(delay_us);
+
+    // Reset the watchdog timer
+    if (i % 100 == 0) // Adjust the value as needed
+    {
+      esp_task_wdt_reset();
+    }
   }
 
-  // Switch back to UART control mode (VACTUAL = 0)
-  writeRegister(driver, REG_VACTUAL, 0);
+  // Unregister the current task from the watchdog timer if it was registered
+  if (wdt_registered)
+  {
+    err = esp_task_wdt_delete(task_handle);
+    if (err != ESP_OK)
+    {
+      ESP_LOGE(TAG, "Failed to unregister task with WDT: %s", esp_err_to_name(err));
+    }
+  }
+
+  // Restore the default watchdog timer configuration
+  esp_task_wdt_config_t default_wdt_config = {
+      .timeout_ms = CONFIG_ESP_TASK_WDT_TIMEOUT_S * 1000, // Default timeout from config
+      .idle_core_mask = 0,                                // No idle cores
+      .trigger_panic = true                               // Trigger panic on timeout
+  };
+  
+  esp_task_wdt_reconfigure(&default_wdt_config);
 }
 
-void rotate_motor_by_angle(TMC2209_Driver *driver, float angle, uint32_t speed)
+void rotate_by_angle(TMC2209_Driver *driver, float angle, uint32_t speed_rpm)
 {
   // Calculate the number of steps required to move the motor by the specified angle
   int32_t steps = (int32_t)(driver->settings.full_steps_per_rev * angle / 360.0f);
 
+  int32_t speed = (int32_t)(driver->settings.full_steps_per_rev * speed_rpm / 60.0f);
+
   // Rotate the motor by the calculated number of steps
-  rotate_motor_by_steps(driver, steps, speed);
-}
-
-void rotate_by_steps(TMC2209_Driver *driver, int32_t steps, uint32_t velocity_sps)
-{
-  // Set DIR pin based on the sign of steps
-  gpio_set_level(driver->dir_pin, steps >= 0 ? 0 : 1);
-
-  set_target_velocity(driver, velocity_sps * driver->settings.microsteps);
-
-  // Get the current tick count
-  TickType_t xLastWakeTime = xTaskGetTickCount();
-
-  // Calculate delay between steps (in microseconds)
-  // 1 second has 1000000 microseconds
-  uint32_t delay_us = 1000000 / velocity_sps / driver->settings.microsteps;
-
-  // Ensure delay is at least one tick
-  if (delay_us < portTICK_PERIOD_MS)
-  {
-    delay_us = portTICK_PERIOD_MS; // Minimum delay of one tick
-  }
-
-  // Loop for the absolute value of steps
-  for (int32_t i = 0; i < abs(steps); i++)
-  {
-    // Toggle STEP pin
-    gpio_set_level(driver->step_pin, 1);
-    esp_rom_delay_us(10); // Short pulse, adjust if needed
-    gpio_set_level(driver->step_pin, 0);
-
-    // Introduce delay
-    vTaskDelayUntil(&xLastWakeTime, delay_us / portTICK_PERIOD_MS);
-  }
-
-  // Switch back to UART control mode (VACTUAL = 0)
-  writeRegister(driver, REG_VACTUAL, 0);
+  rotate_by_steps(driver, steps, speed);
 }
 
 void enable_driver(TMC2209_Driver *driver)

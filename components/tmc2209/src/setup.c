@@ -20,8 +20,7 @@ esp_err_t setup_driver(TMC2209_Driver *driver)
       .data_bits = UART_DATA_8_BITS,
       .parity = UART_PARITY_DISABLE,
       .stop_bits = UART_STOP_BITS_1,
-      .flow_ctrl = UART_HW_FLOWCTRL_DISABLE
-  };
+      .flow_ctrl = UART_HW_FLOWCTRL_DISABLE};
 
   ESP_ERROR_CHECK(uart_param_config(driver->uart_num, &uart_config));
 

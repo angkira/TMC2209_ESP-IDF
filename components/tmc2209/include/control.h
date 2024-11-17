@@ -10,9 +10,8 @@ void moveAtVelocity(TMC2209_Driver *driver, int32_t velocity);
 
 void set_target_velocity(TMC2209_Driver *driver, int32_t velocity);
 
-void rotate_motor_by_steps(TMC2209_Driver *driver, int32_t steps, uint32_t speed);
-void rotate_by_steps(TMC2209_Driver *driver, int32_t steps, uint32_t velocity_sps);
+void rotate_by_steps(TMC2209_Driver *driver, int32_t steps, uint32_t speed_steps_per_second);
 
-void rotate_motor_by_angle(TMC2209_Driver *driver, float angle, uint32_t speed);
+void rotate_by_angle(TMC2209_Driver *driver, float angle, uint32_t speed_rpm);
 
 #endif // TMC2209_CONTROL_H
